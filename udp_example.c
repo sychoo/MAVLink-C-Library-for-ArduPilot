@@ -1,6 +1,6 @@
 // Simple example receiving and sending MAVLink v2 over UDP
 // based on POSIX APIs (e.g. Linux, BSD, macOS).
-// https://github.com/BenbenIO/simple-Mavlink-C-rover/blob/master/rover.cpp
+// https://github.com/BenbenIO/simple-Mavlink-C-rover/bllsob/master/rover.cpp
 
 // todo: figure out mission and geofencing, going towards a certain direction
 #include <errno.h>
@@ -31,7 +31,9 @@ void set_guided_mode(int socket_fd, const struct sockaddr_in* src_addr, socklen_
 void arm(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
 void takeoff(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
 void start_mission(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
-
+void start_geofence(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
+void define_geofence(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
+void start_geofence_mission_count(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
 
 
 int main(int argc, char* argv[])
@@ -156,11 +158,15 @@ void send_some(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_
 }
 
 void test_send_command(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len) {
-    set_guided_mode(socket_fd, src_addr, src_addr_len);
-    arm(socket_fd, src_addr, src_addr_len);
-    takeoff(socket_fd, src_addr, src_addr_len);
-    sleep(10);
-    start_mission(socket_fd, src_addr, src_addr_len);
+    // set_guided_mode(socket_fd, src_addr, src_addr_len);
+    // arm(socket_fd, src_addr, src_addr_len);
+    // takeoff(socket_fd, src_addr, src_addr_len);
+    // sleep(10);
+    // start_mission(socket_fd, src_addr, src_addr_len);
+
+    start_geofence_mission_count(socket_fd, src_addr, src_addr_len);
+    define_geofence(socket_fd, src_addr, src_addr_len);
+    start_geofence(socket_fd, src_addr, src_addr_len);
 }
 
 
@@ -268,8 +274,6 @@ void takeoff(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_ad
 	// Encode:
 	mavlink_msg_command_long_encode(1, 255, &message, &takeoff);
 
-
-
     // write to the socket
     uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
     const int len = mavlink_msg_to_send_buffer(buffer, &message);
@@ -283,6 +287,242 @@ void takeoff(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_ad
 }
 
 
+void start_geofence(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len)
+{
+    // fence action
+    // https://mavlink.io/en/messages/common.html#FENCE_ACTION_RTL
+
+    // mission type fence
+    // https://mavlink.io/en/messages/common.html#MAV_MISSION_TYPE_FENCE
+
+    // command to start the geo fence
+    // https://ardupilot.org/copter/docs/common-mavlink-mission-command-messages-mav_cmd.html#mav-cmd-do-fence-enable
+
+    mavlink_message_t message;
+     
+    mavlink_command_long_t armed = {0};
+	armed.target_system = 1;
+	armed.target_component = 0;
+	armed.command = MAV_CMD_DO_FENCE_ENABLE; //400
+	armed.confirmation = true;
+	armed.param1 = 1; // states (ready = 1)
+	
+	// Encode:
+	mavlink_msg_command_long_encode(1, 255, &message, &armed);
+
+    // write to the socket
+    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
+    const int len = mavlink_msg_to_send_buffer(buffer, &message);
+
+    int ret = sendto(socket_fd, buffer, len, 0, (const struct sockaddr*)src_addr, src_addr_len);
+    if (ret != len) {
+        printf("sendto error: %s\n", strerror(errno));
+    } else {
+        printf("GeoFence is Enabled for the Drone\n");
+    }
+}
+
+// MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION
+// the way to properly start a fence is by uploading the fence points and enable it (it must first signal how many waypoints it should receive before actually sending them)
+// https://discuss.ardupilot.org/t/mavlink-mission-command-error-mav-mission-error-1/19286/4
+void start_geofence_mission_count(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len)
+{
+    // geofence inclusion
+    // https://mavlink.io/en/messages/common.html#MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION
+    
+    // fence action
+    // https://mavlink.io/en/messages/common.html#FENCE_ACTION_RTL
+
+    // mission type fence
+    // https://mavlink.io/en/messages/common.html#MAV_MISSION_TYPE_FENCE
+
+    // command to start the geo fence
+    // https://ardupilot.org/copter/docs/common-mavlink-mission-command-messages-mav_cmd.html#mav-cmd-do-fence-enable
+
+    // mavlink_message_t message;
+     
+     // go to waypoint: -35.313553, 149.162057
+
+    // https://ardupilot.org/copter/docs/common-mavlink-mission-command-messages-mav_cmd.html#mav-cmd-nav-waypoint
+    // https://discuss.ardupilot.org/t/got-command-ack-nav-waypoint-unsupported/93054/2
+    // https://github.com/mustafa-gokce/ardupilot-software-development/blob/main/pymavlink/goto-location.py
+
+    // https://discuss.ardupilot.org/t/mavlink-mission-command-error-mav-mission-error-1/19286/4
+	mavlink_mission_count_t mission = {0};
+	mission.target_system = 1;
+	mission.target_component = 0;
+	// mission.command = MISSION_COUNT; //; 	//213 (MAV_CMD_DO_SET_POSITION_YAW_THRUST)
+    // mission.frame = MAV_FRAME_GLOBAL_RELATIVE_ALT_INT; //MAV_FRAME_GLOBAL_RELATIVE_ALT_INT
+    // mission.current = 2;
+    // mission.autocontinue = 0;
+    mission.mission_type = MAV_MISSION_TYPE_FENCE;
+    mission.count = 1; // number of messages in the sequence (fence points)
+	// mission.param1 = 10;			 	//angle (centridegree) [-4500 - 4500]
+	// mission.param2 = 10;			 	//angle (centridegree) [-4500 - 4500]
+	// mission.param3 = 0;			 	//angle (centridegree) [-4500 - 4500]
+	// mission.param4 = 0;			 	//angle (centridegree) [-4500 - 4500]
+
+	// mission.param1 = 200; // 200 meters
+    // mission.param2 = 0; // 0 group included
+ 	// mission.x = (int) (-35.36277334 * 10000000.0);	 			//speed normalized [0 - 1]
+    // mission.y = (int) (149.16536671 * 10000000.0);	 	
+
+	// mission.x = (int) (-35.313553 * 10000000.0);	 			//speed normalized [0 - 1]
+    // mission.y = (int) (149.162057 * 10000000.0);	 			//speed normalized [0 - 1]
+    // mission.z = 20;	 			//speed normalized [0 - 1]
+	
+	// Encode:
+	mavlink_message_t msg;
+
+    mavlink_msg_mission_count_encode(1, 255, &msg, &mission);
+
+    //      mavlink_command_long_t armed = {0};
+	// armed.target_system = 1;
+	// armed.target_component = 0;
+	// // armed.command = MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION; //400
+    // armed.command=MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION;
+	// // armed.confirmation = true;
+	// armed.param1 = 200; // 200 meters
+    // armed.param2 = 0; // 0 group included
+ 	// armed.param5 = (float) (-35.36277334 * 10000000.0);	 			//speed normalized [0 - 1]
+    // armed.param6 = (float) (149.16536671 * 10000000.0);	 			//speed normalized [0 - 1]
+    // // mission.z = 20;	 			//speed normalized [0 - 1]
+	
+	
+	// // Encode:
+	// mavlink_msg_command_long_encode(1, 255, &message, &armed);
+
+    // mavlink_command_int_t armed = {0};
+	// armed.target_system = 1;
+	// armed.target_component = 0;
+	// // armed.command = MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION; //400
+    // armed.command=MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION;
+	// // armed.confirmation = true;
+	// armed.param1 = 200; // 200 meters
+    // armed.param2 = 0; // 0 group included
+ 	// armed.x = (int) (-35.36277334 * 10000000.0);	 			//speed normalized [0 - 1]
+    // armed.y = (int) (149.16536671 * 10000000.0);	 			//speed normalized [0 - 1]
+    // // mission.z = 20;	 			//speed normalized [0 - 1]
+	
+	
+	// // Encode:
+	// mavlink_msg_command_int_encode(1, 255, &message, &armed);
+
+    // write to the socket
+    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
+    const int len = mavlink_msg_to_send_buffer(buffer, &msg);
+
+    int ret = sendto(socket_fd, buffer, len, 0, (const struct sockaddr*)src_addr, src_addr_len);
+    if (ret != len) {
+        printf("sendto error: %s\n", strerror(errno));
+    } else {
+        printf("GeoFence is Defined for the Drone\n");
+    }
+}
+
+
+// MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION
+void define_geofence(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len)
+{
+    // geofence inclusion
+    // https://mavlink.io/en/messages/common.html#MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION
+    
+    // fence action
+    // https://mavlink.io/en/messages/common.html#FENCE_ACTION_RTL
+
+    // mission type fence
+    // https://mavlink.io/en/messages/common.html#MAV_MISSION_TYPE_FENCE
+
+    // command to start the geo fence
+    // https://ardupilot.org/copter/docs/common-mavlink-mission-command-messages-mav_cmd.html#mav-cmd-do-fence-enable
+
+    // mavlink_message_t message;
+     
+     // go to waypoint: -35.313553, 149.162057
+
+    // https://ardupilot.org/copter/docs/common-mavlink-mission-command-messages-mav_cmd.html#mav-cmd-nav-waypoint
+    // https://discuss.ardupilot.org/t/got-command-ack-nav-waypoint-unsupported/93054/2
+    // https://github.com/mustafa-gokce/ardupilot-software-development/blob/main/pymavlink/goto-location.py
+
+    // https://discuss.ardupilot.org/t/mavlink-mission-command-error-mav-mission-error-1/19286/4
+	mavlink_mission_item_int_t mission = {0};
+	mission.target_system = 1;
+	mission.target_component = 0;
+	mission.command = MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION; //; 	//213 (MAV_CMD_DO_SET_POSITION_YAW_THRUST)
+    mission.frame = MAV_FRAME_GLOBAL_RELATIVE_ALT_INT; //MAV_FRAME_GLOBAL_RELATIVE_ALT_INT
+    mission.current = 2;
+    mission.autocontinue = 0;
+    mission.mission_type = MAV_MISSION_TYPE_FENCE;
+	// mission.param1 = 10;			 	//angle (centridegree) [-4500 - 4500]
+	// mission.param2 = 10;			 	//angle (centridegree) [-4500 - 4500]
+	// mission.param3 = 0;			 	//angle (centridegree) [-4500 - 4500]
+	// mission.param4 = 0;			 	//angle (centridegree) [-4500 - 4500]
+
+	mission.param1 = 500; // 200 meters
+    mission.param2 = 0; // 0 group included
+ 	mission.x = (int) (-35.36277334 * 10000000.0);	 			//speed normalized [0 - 1]
+    mission.y = (int) (149.16536671 * 10000000.0);	 	
+
+	// mission.x = (int) (-35.313553 * 10000000.0);	 			//speed normalized [0 - 1]
+    // mission.y = (int) (149.162057 * 10000000.0);	 			//speed normalized [0 - 1]
+    // mission.z = 20;	 			//speed normalized [0 - 1]
+	
+	// Encode:
+	mavlink_message_t msg;
+
+    mavlink_msg_mission_item_int_encode(1, 255, &msg, &mission);
+
+    //      mavlink_command_long_t armed = {0};
+	// armed.target_system = 1;
+	// armed.target_component = 0;
+	// // armed.command = MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION; //400
+    // armed.command=MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION;
+	// // armed.confirmation = true;
+	// armed.param1 = 200; // 200 meters
+    // armed.param2 = 0; // 0 group included
+ 	// armed.param5 = (float) (-35.36277334 * 10000000.0);	 			//speed normalized [0 - 1]
+    // armed.param6 = (float) (149.16536671 * 10000000.0);	 			//speed normalized [0 - 1]
+    // // mission.z = 20;	 			//speed normalized [0 - 1]
+	
+	
+	// // Encode:
+	// mavlink_msg_command_long_encode(1, 255, &message, &armed);
+
+    // mavlink_command_int_t armed = {0};
+	// armed.target_system = 1;
+	// armed.target_component = 0;
+	// // armed.command = MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION; //400
+    // armed.command=MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION;
+	// // armed.confirmation = true;
+	// armed.param1 = 200; // 200 meters
+    // armed.param2 = 0; // 0 group included
+ 	// armed.x = (int) (-35.36277334 * 10000000.0);	 			//speed normalized [0 - 1]
+    // armed.y = (int) (149.16536671 * 10000000.0);	 			//speed normalized [0 - 1]
+    // // mission.z = 20;	 			//speed normalized [0 - 1]
+	
+	
+	// // Encode:
+	// mavlink_msg_command_int_encode(1, 255, &message, &armed);
+
+    // write to the socket
+    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
+    const int len = mavlink_msg_to_send_buffer(buffer, &msg);
+
+    int ret = sendto(socket_fd, buffer, len, 0, (const struct sockaddr*)src_addr, src_addr_len);
+    if (ret != len) {
+        printf("sendto error: %s\n", strerror(errno));
+    } else {
+        printf("GeoFence is Defined for the Drone\n");
+    }
+}
+
+// void sleep(int seconds) {
+//   usleep(seconds * 1000000);
+// }
+
+
+
+// waypoint mission
 // note that mission can only be started using the mavlink_mission_item)int construct in ArduPilot
 void start_mission(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len) {
 

@@ -6,5 +6,5 @@ C_DEFINES =
 
 C_INCLUDES = -isystem /Users/rockita/Code/proj/vspells/MAVLink_Repository/mavlink/install/include
 
-C_FLAGS =  -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.3.sdk -std=gnu11
+C_FLAGS =  -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.0.sdk -mmacosx-version-min=13.5 -std=gnu11
 
