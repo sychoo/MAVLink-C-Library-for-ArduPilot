@@ -117,41 +117,41 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named udp_example
+# Target rules for targets named demo
 
 # Build rule for target.
-udp_example: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 udp_example
-.PHONY : udp_example
+demo: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 demo
+.PHONY : demo
 
 # fast build rule for target.
-udp_example/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/udp_example.dir/build.make CMakeFiles/udp_example.dir/build
-.PHONY : udp_example/fast
+demo/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/demo.dir/build.make CMakeFiles/demo.dir/build
+.PHONY : demo/fast
 
-udp_example.o: udp_example.c.o
-.PHONY : udp_example.o
+demo.o: demo.c.o
+.PHONY : demo.o
 
 # target to build an object file
-udp_example.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/udp_example.dir/build.make CMakeFiles/udp_example.dir/udp_example.c.o
-.PHONY : udp_example.c.o
+demo.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/demo.dir/build.make CMakeFiles/demo.dir/demo.c.o
+.PHONY : demo.c.o
 
-udp_example.i: udp_example.c.i
-.PHONY : udp_example.i
+demo.i: demo.c.i
+.PHONY : demo.i
 
 # target to preprocess a source file
-udp_example.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/udp_example.dir/build.make CMakeFiles/udp_example.dir/udp_example.c.i
-.PHONY : udp_example.c.i
+demo.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/demo.dir/build.make CMakeFiles/demo.dir/demo.c.i
+.PHONY : demo.c.i
 
-udp_example.s: udp_example.c.s
-.PHONY : udp_example.s
+demo.s: demo.c.s
+.PHONY : demo.s
 
 # target to generate assembly for a file
-udp_example.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/udp_example.dir/build.make CMakeFiles/udp_example.dir/udp_example.c.s
-.PHONY : udp_example.c.s
+demo.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/demo.dir/build.make CMakeFiles/demo.dir/demo.c.s
+.PHONY : demo.c.s
 
 # Help Target
 help:
@@ -161,10 +161,10 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
-	@echo "... udp_example"
-	@echo "... udp_example.o"
-	@echo "... udp_example.i"
-	@echo "... udp_example.s"
+	@echo "... demo"
+	@echo "... demo.o"
+	@echo "... demo.i"
+	@echo "... demo.s"
 .PHONY : help
 
 

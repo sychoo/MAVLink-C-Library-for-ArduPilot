@@ -1,8 +1,3 @@
-// Simple example receiving and sending MAVLink v2 over UDP
-// based on POSIX APIs (e.g. Linux, BSD, macOS).
-// https://github.com/BenbenIO/simple-Mavlink-C-rover/bllsob/master/rover.cpp
-
-// todo: figure out mission and geofencing, going towards a certain direction
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -25,12 +20,12 @@ void handle_mission_count(const mavlink_message_t* message);
 
 void send_some(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
 void initial_command(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
-
-// void sleep(int seconds);
 void test_send_command(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
 
 void send_heartbeat(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
 void set_guided_mode(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
+void set_adsb_mode(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
+
 void arm(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
 void takeoff(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
 void start_mission(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
@@ -41,7 +36,9 @@ void fence_list(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src
 void define_fence_breach_action(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
 void handle_fence_breach(const mavlink_message_t* message);
 
+
 int radius = 500;
+int altitude = 20;
 
 int main(int argc, char* argv[])
 {
@@ -79,8 +76,14 @@ int main(int argc, char* argv[])
     socklen_t src_addr_len = sizeof(src_addr);
     bool src_addr_set = false;
 
-    // command that only needs to be executed once
-    initial_command(socket_fd, &src_addr, src_addr_len);
+    int init_cmd_req_count = 1;
+    while (init_cmd_req_count > 0) {
+        receive_some(socket_fd, &src_addr, &src_addr_len, &src_addr_set);
+        // command that only needs to be executed once
+        initial_command(socket_fd, &src_addr, src_addr_len);
+        // sleep(1);
+        init_cmd_req_count = init_cmd_req_count - 1;
+    }
 
     while (true) {
         // For illustration purposes we don't bother with threads or async here
@@ -269,6 +272,18 @@ void handle_heartbeat(const mavlink_message_t* message)
     printf(" autopilot\n");
 }
 
+void send_some_init(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len)
+{
+    // Whenever a second has passed, we send a heartbeat.
+    static time_t last_time = 0;
+    time_t current_time = time(NULL);
+    if (current_time - last_time >= 1) {
+        initial_command(socket_fd, src_addr, src_addr_len);
+
+        last_time = current_time;
+    }
+}
+
 void send_some(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len)
 {
     // Whenever a second has passed, we send a heartbeat.
@@ -315,6 +330,34 @@ void send_heartbeat(int socket_fd, const struct sockaddr_in* src_addr, socklen_t
         printf("sendto error: %s\n", strerror(errno));
     } else {
         printf("Sent heartbeat\n");
+    }
+}
+
+
+// note that system = 1, target = 0. otherwise no response or ack from ardupilot
+void set_adsb_mode(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len)
+{
+    mavlink_message_t message;
+    mavlink_command_long_t set_mode = {0};
+     
+    set_mode.target_system = 1; // must be 1 
+	set_mode.target_component = 0; // must be 0
+	set_mode.command = MAV_CMD_DO_SET_MODE;		// 176
+	set_mode.confirmation = true;
+	set_mode.param1 = 1; 				//need to be 1 ?? check			 	
+	set_mode.param2 = 19; // 4 is GUIDED mode for drones (https://ardupilot.org/copter/docs/parameters.html#fltmode1)
+
+    mavlink_msg_command_long_encode(1, 0, &message, &set_mode);
+
+    // write to the socket
+    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
+    const int len = mavlink_msg_to_send_buffer(buffer, &message);
+
+    int ret = sendto(socket_fd, buffer, len, 0, (const struct sockaddr*)src_addr, src_addr_len);
+    if (ret != len) {
+        printf("sendto error: %s\n", strerror(errno));
+    } else {
+        printf("Set GUIDED Mode\n");
     }
 }
 
@@ -527,7 +570,7 @@ void define_geofence(int socket_fd, const struct sockaddr_in* src_addr, socklen_
 	// mission.param4 = 0;			 	//angle (centridegree) [-4500 - 4500]
 
 	mission.param1 = radius; // 200 meters
-    radius = radius - 10;
+    // radius = radius - 10;
     mission.param2 = 0; // 0 group included
  	mission.x = (int) (-35.36277334 * 10000000.0);	 			//speed normalized [0 - 1]
     mission.y = (int) (149.16536671 * 10000000.0);	 	
@@ -540,38 +583,6 @@ void define_geofence(int socket_fd, const struct sockaddr_in* src_addr, socklen_
 	mavlink_message_t msg;
 
     mavlink_msg_mission_item_int_encode(1, 255, &msg, &mission);
-
-    //      mavlink_command_long_t armed = {0};
-	// armed.target_system = 1;
-	// armed.target_component = 0;
-	// // armed.command = MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION; //400
-    // armed.command=MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION;
-	// // armed.confirmation = true;
-	// armed.param1 = 200; // 200 meters
-    // armed.param2 = 0; // 0 group included
- 	// armed.param5 = (float) (-35.36277334 * 10000000.0);	 			//speed normalized [0 - 1]
-    // armed.param6 = (float) (149.16536671 * 10000000.0);	 			//speed normalized [0 - 1]
-    // // mission.z = 20;	 			//speed normalized [0 - 1]
-	
-	
-	// // Encode:
-	// mavlink_msg_command_long_encode(1, 255, &message, &armed);
-
-    // mavlink_command_int_t armed = {0};
-	// armed.target_system = 1;
-	// armed.target_component = 0;
-	// // armed.command = MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION; //400
-    // armed.command=MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION;
-	// // armed.confirmation = true;
-	// armed.param1 = 200; // 200 meters
-    // armed.param2 = 0; // 0 group included
- 	// armed.x = (int) (-35.36277334 * 10000000.0);	 			//speed normalized [0 - 1]
-    // armed.y = (int) (149.16536671 * 10000000.0);	 			//speed normalized [0 - 1]
-    // // mission.z = 20;	 			//speed normalized [0 - 1]
-	
-	
-	// // Encode:
-	// mavlink_msg_command_int_encode(1, 255, &message, &armed);
 
     // write to the socket
     uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
@@ -923,17 +934,77 @@ sp.vz       = 0.0;
 }
 
 
+// note that parameter 7 determines the takeoff altitude
+void send_adsb_signal(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len)
+{
+    mavlink_message_t message;
+
+    mavlink_adsb_vehicle_t sp = {0};
+    sp.ICAO_address = 4000; /*<  ICAO address*/
+    sp.lat = (int) (-35.36277334 * 10000000.0);	 //speed normalized [0 - 1]
+    sp.lon = (int) (149.16536671 * 10000000.0);	 /*< [degE7] Latitude*/
+    sp.altitude = 604000;
+    // 1000000; /* in militers above sea level < [mm] Altitude(ASL)*/
+    // altitude = altitude + 20;
+    sp.heading = 0; /*< [cdeg] Course over ground*/
+    sp.hor_velocity = 10; /*< [cm/s] The horizontal velocity*/
+    sp.ver_velocity = 0; /*< [cm/s] The vertical velocity. Positive is up*/
+    sp.flags = 
+              ADSB_FLAGS_VALID_COORDS |
+                ADSB_FLAGS_VALID_ALTITUDE |
+                ADSB_FLAGS_VALID_HEADING |
+                ADSB_FLAGS_VALID_VELOCITY |
+                ADSB_FLAGS_VALID_CALLSIGN |
+                ADSB_FLAGS_VALID_SQUAWK |
+                ADSB_FLAGS_SIMULATED |
+                ADSB_FLAGS_VERTICAL_VELOCITY_VALID |
+                ADSB_FLAGS_BARO_VALID;
+                // 0;
+    // ADSB_FLAGS_VALID_COORDS; /*<  Bitmap to indicate various statuses including valid data fields*/
+    // sp.flags = ADSB_FLAGS_VALID_ALTITUDE;
+    // sp.flags = ADSB_FLAGS_VALID_HEADING & ADSB_FLAGS_VALID_VELOCITY & ADSB_FLAGS_VALID_CALLSIGN & ADSB_FLAGS_VALID_SQUAWK & ADSB_FLAGS_VALID_ALTITUDE & ADSB_FLAGS_VALID_COORDS;
+    sp.squawk = 5000; /*<  Squawk code*/
+    sp.altitude_type =  ADSB_ALTITUDE_TYPE_PRESSURE_QNH;
+    // ADSB_ALTITUDE_TYPE_GEOMETRIC;
+    // ADSB_ALTITUDE_TYPE_PRESSURE_QNH; /*<  ADSB altitude type.*/
+    // sp.callsign[9] = "SIM5743"; /*<  The callsign, 8+null*/
+    strcpy(sp.callsign, "SIM5743"); //
+    sp.emitter_type = ADSB_EMITTER_TYPE_UAV; /*<  ADSB emitter type.*/
+    sp.tslc = 1; 
+
+	// Encode:
+	mavlink_msg_adsb_vehicle_encode(1, 255, &message, &sp);
+
+    // write to the socket
+    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
+    const int len = mavlink_msg_to_send_buffer(buffer, &message);
+
+    int ret = sendto(socket_fd, buffer, len, 0, (const struct sockaddr*)src_addr, src_addr_len);
+    if (ret != len) {
+        printf("sendto error: %s\n", strerror(errno));
+    } else {
+        printf("SENDING ADSB SIGNAL\n");
+    }
+}
+
+
 // executed every second
 void test_send_command(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len) {
+
     // set_guided_mode(socket_fd, src_addr, src_addr_len);
     // arm(socket_fd, src_addr, src_addr_len);
     // takeoff(socket_fd, src_addr, src_addr_len);
+
+    send_adsb_signal(socket_fd, src_addr, src_addr_len);
     // sleep(10);
-    // // move_drone_local(socket_fd, src_addr, src_addr_len);
-    start_mission(socket_fd, src_addr, src_addr_len);
-sleep(1);
-    // start_geofence_mission_count(socket_fd, src_addr, src_addr_len);
-    // define_geofence(socket_fd, src_addr, src_addr_len);
+    // // // move_drone_local(socket_fd, src_addr, src_addr_len);
+    // start_mission(socket_fd, src_addr, src_addr_len);
+// sleep(1);
+
+
+// set_adsb_mode(socket_fd, src_addr, src_addr_len);
+//     start_geofence_mission_count(socket_fd, src_addr, src_addr_len);
+//     define_geofence(socket_fd, src_addr, src_addr_len);
 
     // sleep(1);
     // enable the geofence
@@ -965,11 +1036,13 @@ sleep(1);
 
 void initial_command(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len)
 {
+        send_adsb_signal(socket_fd, src_addr, src_addr_len);
     // set_guided_mode(socket_fd, src_addr, src_addr_len);
     // arm(socket_fd, src_addr, src_addr_len);
     // takeoff(socket_fd, src_addr, src_addr_len);
     // sleep(10);
 
+    // start_mission(socket_fd, src_addr, src_addr_len);
     // define_fence_breach_action(socket_fd, src_addr, src_addr_len);
 
     // start_geofence_mission_count(socket_fd, src_addr, src_addr_len);

@@ -69,6 +69,43 @@ To start the mission in Ardupilot, it first have to send a mission count, signal
 
 # To Do
 - How to list a fence (so that it shows up on the visualization map)
+    - no success, fence list command in MAVProxy starts the visualization, while the simply executing the fetch_fence command does not.
+    - Error message: Vehicle waypoint too advanced. Suspecting because of I didn't receive and unpack the message
+    - this is where it was originally defined in MAVProxy
+    - verdict: it is not possible: self.draw controls the UI which cannot be invoked via MAVLink Messages
+    - simply redefine the fence to override the previous one. clear_fence doesn't work
+
 - how to clear the fence and reload another fence
+    - doesn't work
+
 - How to receive the battery level from the drone?
-- How to define the actions when teh drone hits the fence?
+    - done, using Battery Status, in the place of receive_somes
+
+- How to define the actions when the drone hits the fence?
+
+Error: Fence on the MAVProxy Map cannot be refreshed.
+Solution: repeatedly execute the `fence list` command in MAVProxy, and the fence will be refreshed.
+
+# TODO
+- specify fence breaching actions (get drone to hold when the fence is breached)
+
+- offboard mode using mavlink messages (https://ardupilot.org/dev/docs/copter-commands-in-guided-mode.html)
+
+- receive a signal when the fence is breached
+- AP_Fence_Breached
+
+- Calculate the distance between the current position to teh home point
+
+- How to stop the mission?
+
+# Hacking
+- first setmode, takeoff and start the mission
+- then start, define, and maintain the geo fence, monitor breaching
+- if breached, hold the drone, or return to home
+- how to clear the mission
+
+Note that mission cannot be started when exceeding the geo fence
+- demonstrate regular geo fencing
+- shrinking the geo fence
+
+need to receive something first before being able to send something (for initial command)
